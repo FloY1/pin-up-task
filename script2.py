@@ -36,7 +36,7 @@ class TypeConverter:
             return None
 
     @classmethod
-    def convert_date(cls, value):
+    def to_date(cls, value) -> datetime | None:
         for format in cls.DATE_FORMATS:
             try:
                 return datetime.strptime(value, format)
@@ -61,7 +61,7 @@ class DataProvider(ABC):
 
 
 class CSVDataProvider(DataProvider):
-    PAYMENTS_COLUMNS = {'Date': TypeConverter.convert_date,
+    PAYMENTS_COLUMNS = {'Date': TypeConverter.to_date,
                         'player_id': TypeConverter.to_numeric,
                         'paid_amount': TypeConverter.to_decimal,
                         'transaction_type': str,
@@ -73,7 +73,7 @@ class CSVDataProvider(DataProvider):
     BETS_DIRECTORY = 'bets'
 
     BETS_COLUMNS = {'bet_id': str,
-                    'accept_time': TypeConverter.convert_date,
+                    'accept_time': TypeConverter.to_date,
                     'result': str,
                     'price_change_policy': str,
                     'settlement_exchange_rate': str,
@@ -129,6 +129,28 @@ class UserOperationsDetector:
         :param td_bw_dep_withd: The maximum acceptable time difference between a deposit and a withdrawal.
         :return: True if a sequence is found, False otherwise.
         """
+
+        withdrawals_start = 0
+        bets_start = 0
+
+        for _, deposit in self._deposits.iterrows():
+            for withdrawal_index in range(withdrawals_start, len(self._withdrawals)):
+                withdrawal = self._withdrawals.iloc[withdrawal_index]
+                if withdrawal['Date'] <= deposit['Date']:
+                    withdrawals_start += 1
+                elif withdrawal['Date'] - deposit['Date'] < td_bw_dep_withd:
+                    for bet_index in range(bets_start, len(self._bets)):
+                        bet = self._bets.iloc[bet_index]
+                        if bet['accept_time'] <= deposit['Date']:
+                            bets_start += 1
+                        elif bet['accept_time'] < withdrawal['Date']:
+                            break
+                        elif bet['amount'] * (1 - bet_range) <= deposit['paid_amount'] <= bet['amount'] * (
+                                1 + bet_range):
+                            return True
+                else:
+                    break
+
         return False
 
 
