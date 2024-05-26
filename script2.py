@@ -115,12 +115,29 @@ class UserOperationsDetector:
     """
 
     def __init__(self, deposits: pd.DataFrame, withdrawals: pd.DataFrame, bets: pd.DataFrame):
+        """
+        Data should be for one user and sorted by date
+        """
         self._deposits: pd.DataFrame = deposits
         self._withdrawals: pd.DataFrame = withdrawals
         self._bets: pd.DataFrame = bets
 
-    def has_win_streek(self):
+    def has_win_streak(self, streak_len: int = 5, odds: Decimal = Decimal('1.5')) -> bool:
+        """
+        Check if there is a sequence of winning bets with odds greater than the given value.
+        """
+
+        win_streak = 0
+        for _, bet in self._bets.iterrows():
+            if bet['payout'] / bet['amount'] > odds:
+                win_streak += 1
+                if win_streak == streak_len:
+                    return True
+            else:
+                win_streak = 0
+
         return False
+
 
     def has_dep_bet_withd_sequence(self,
                                    bet_amount_range: Decimal = Decimal('0.1'),
@@ -222,7 +239,7 @@ class DataProcessor:
         for player_id, detector in detectors.items():
             if detector.has_dep_bet_withd_sequence():
                 players_with_seq.append(player_id)
-            if detector.has_win_streek():
+            if detector.has_win_streak():
                 players_with_win_streak.append(player_id)
 
         self._save_results(players_with_seq, players_with_win_streak)

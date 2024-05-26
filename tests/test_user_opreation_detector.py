@@ -29,3 +29,23 @@ class TestUserOperationsDetector(unittest.TestCase):
 
         detector = UserOperationsDetector(deposits, withdrawals, bets)
         self.assertTrue(detector.has_dep_bet_withd_sequence())
+
+
+    def test_should_find_win_streak(self):
+        bets = pd.DataFrame({
+            'amount': [Decimal(100), Decimal(100), Decimal(100)],
+            'payout': [Decimal(200), Decimal(200), Decimal(200)],
+        })
+
+        detector = UserOperationsDetector(None, None, bets)
+        self.assertTrue(detector.has_win_streak(streak_len=3))
+
+
+    def test_should_not_find_win_streak(self):
+        bets = pd.DataFrame({
+            'amount': [Decimal(100), Decimal(100), Decimal(100)],
+            'payout': [Decimal(200), Decimal(150), Decimal(200)],
+        })
+
+        detector = UserOperationsDetector(None, None, bets)
+        self.assertFalse(detector.has_win_streak(streak_len=3))
