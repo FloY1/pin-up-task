@@ -21,12 +21,11 @@ class TestUserOperationsDetector(unittest.TestCase):
         })
 
         bets = pd.DataFrame({
-            'bet_id': ['bet1', 'bet2', 'bet3'],
             'accept_time': pd.date_range(start='1/1/2022 20:00', periods=3, freq='20min'),
             'settlement_exchange_rate': [Decimal('0.8'), Decimal('0.8'), Decimal('0.8')],
             'currency': ['USD', 'USD', 'USD'],
             'amount': [Decimal(100), Decimal(100), Decimal(300)],
         })
 
-        detector = UserOperationsDetector(deposits, withdrawals, bets)
+        detector = UserOperationsDetector(1, deposits, withdrawals, bets)
         self.assertTrue(detector.has_dep_bet_withd_sequence())
