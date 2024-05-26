@@ -12,6 +12,10 @@ logger = logging.getLogger(__name__)
 getcontext().prec = 5
 
 
+class Currency:
+    USD = 'USD'
+
+
 class TypeConverter:
     """
     A utility class that provides methods for converting data types.
@@ -72,15 +76,11 @@ class CSVDataProvider(DataProvider):
 
     BETS_DIRECTORY = 'bets'
 
-    BETS_COLUMNS = {'bet_id': str,
-                    'accept_time': TypeConverter.to_date,
-                    'result': str,
-                    'price_change_policy': str,
+    BETS_COLUMNS = {'accept_time': TypeConverter.to_date,
                     'settlement_exchange_rate': str,
                     'currency': str,
                     'player_id': TypeConverter.to_int,
                     'amount': TypeConverter.to_decimal,
-                    'profit': TypeConverter.to_decimal,
                     'payout': TypeConverter.to_decimal}
 
     NA_VALUES = ['na', 'NaN', 'error']
@@ -96,6 +96,9 @@ class CSVDataProvider(DataProvider):
     @classmethod
     def _get_data(cls, folder_name: str, columns: dict[str, Callable]) -> pd.DataFrame:
         files = [f for f in os.listdir(folder_name) if f.endswith('.csv')]
+        if not files:
+            return pd.DataFrame(columns=columns.keys())
+
         df = pd.concat([cls._read_csv(folder_name, file, columns) for file in files])
         return df.dropna()
 
@@ -138,7 +141,6 @@ class UserOperationsDetector:
 
         return False
 
-
     def has_dep_bet_withd_sequence(self,
                                    bet_amount_range: Decimal = Decimal('0.1'),
                                    td_bw_dep_withd: pd.Timedelta = pd.Timedelta(hours=1)) -> bool:
@@ -175,13 +177,33 @@ class UserOperationsDetector:
         """
         for bet_index in range(bets_start, len(self._bets)):
             bet = self._bets.iloc[bet_index]
-            if bet['accept_time'] < withdrawal['Date']:
+            if bet['accept_time'] > withdrawal['Date']:
                 break
 
-            # TODO do something with the currency
-            if bet['amount'] * (1 - bet_range) <= deposit['paid_amount'] <= bet['amount'] * (1 + bet_range):
+            max_bound, min_bound = self._calculate_bet_bounds(deposit, bet, bet_range)
+            if min_bound <= bet['amount'] <= max_bound:
                 return True
+
         return False
+
+    @staticmethod
+    def _calculate_bet_bounds(deposit: pd.Series, bet: pd.Series, bet_range: Decimal):
+        """
+        Calculate the upper and lower bounds for a bet amount based on the deposit amount and currency.
+        """
+        max_bound = -1
+        min_bound = -1
+
+        if deposit['paid_currency'] == bet['currency']:
+            min_bound = deposit['paid_amount'] * (1 - bet_range)
+            max_bound = deposit['paid_amount'] * (1 + bet_range)
+        elif deposit['paid_currency'] == Currency.USD:
+            min_bound = deposit['paid_amount'] * bet['settlement_exchange_rate'] * (1 - bet_range)
+            max_bound = deposit['paid_amount'] * bet['settlement_exchange_rate'] * (1 + bet_range)
+        else:
+            logger.warning(f'Unsupported currency: {deposit["paid_currency"]}')
+
+        return max_bound, min_bound
 
     def _next_bet_index(self, bets_start: int, deposit: pd.Series) -> int:
         """
@@ -273,9 +295,21 @@ class DataProcessor:
 
     @staticmethod
     def _save_results(users_with_seq, users_with_win_streak):
-        print(f'Users with deposit-bet-withdrawal sequence: {users_with_seq} \n'
-              f'Users with 5 consecutive winning bets with odds > 1.5: {users_with_win_streak}')
+        result_dir = 'result'
+
+        if not os.path.exists(result_dir):
+            os.makedirs(result_dir)
+
+        date_str = datetime.now().strftime('%S%M%d%m%Y')
+        with open(f'{result_dir}/result{date_str}.csv', 'w') as csvfile:
+            csvfile.write('player_id\n')
+            csvfile.write('\n'.join(map(str, users_with_seq)))
+
+        with open(f'{result_dir}/bets_result{date_str}.csv', 'w') as csvfile:
+            csvfile.write('player_id\n')
+            csvfile.write('\n'.join(map(str, users_with_win_streak)))
 
 
 if __name__ == '__main__':
+    paym = pd.read_csv('payments/payments_02.csv')
     DataProcessor(CSVDataProvider()).process_data()
