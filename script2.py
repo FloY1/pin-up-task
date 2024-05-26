@@ -20,7 +20,7 @@ class TypeConverter:
     DATE_FORMATS = ['%d/%m/%Y %H:%M', '%m%d%Y %I:%M %p']
 
     @staticmethod
-    def to_numeric(value) -> int | None:
+    def to_int(value) -> int | None:
         try:
             return int(value)
         except ValueError:
@@ -62,7 +62,7 @@ class DataProvider(ABC):
 
 class CSVDataProvider(DataProvider):
     PAYMENTS_COLUMNS = {'Date': TypeConverter.to_date,
-                        'player_id': TypeConverter.to_numeric,
+                        'player_id': TypeConverter.to_int,
                         'paid_amount': TypeConverter.to_decimal,
                         'transaction_type': str,
                         'status': str,
@@ -78,7 +78,7 @@ class CSVDataProvider(DataProvider):
                     'price_change_policy': str,
                     'settlement_exchange_rate': str,
                     'currency': str,
-                    'player_id': TypeConverter.to_numeric,
+                    'player_id': TypeConverter.to_int,
                     'amount': TypeConverter.to_decimal,
                     'profit': TypeConverter.to_decimal,
                     'payout': TypeConverter.to_decimal}
@@ -114,11 +114,13 @@ class UserOperationsDetector:
      A class that provides methods for identifying suspicious sequences of operations from a user.
     """
 
-    def __init__(self, player_id, deposits: pd.DataFrame, withdrawals: pd.DataFrame, bets: pd.DataFrame):
-        self._player_id: int = player_id
+    def __init__(self, deposits: pd.DataFrame, withdrawals: pd.DataFrame, bets: pd.DataFrame):
         self._deposits: pd.DataFrame = deposits
         self._withdrawals: pd.DataFrame = withdrawals
         self._bets: pd.DataFrame = bets
+
+    def has_win_streek(self):
+        return False
 
     def has_dep_bet_withd_sequence(self,
                                    bet_amount_range: Decimal = Decimal('0.1'),
@@ -193,5 +195,70 @@ class UserOperationsDetector:
         return len(df)
 
 
+class DataProcessor:
+
+    def __init__(self, data_provider: DataProvider):
+        self._data_provider: DataProvider = data_provider
+
+    def process_data(self):
+        payments = self._data_provider.get_payments()
+        confirmed_payments = self._confirmed_payments(payments)
+        deposit, withdrawals = self._divided_dep_withd(confirmed_payments)
+
+        bets = self._data_provider.get_bets()
+
+        sorted_deposit = deposit.sort_values(by=['player_id', 'Date'])
+        sorted_withdrawals = withdrawals.sort_values(by=['player_id', 'Date'])
+        sorted_bets = bets.sort_values(by=['player_id', 'accept_time'])
+
+        grouped_deposits = sorted_deposit.groupby('player_id')
+        grouped_withdrawals = sorted_withdrawals.groupby('player_id')
+        grouped_bets = sorted_bets.groupby('player_id')
+
+        detectors = self._make_user_detectors(grouped_bets, grouped_deposits, grouped_withdrawals)
+
+        players_with_seq = []
+        players_with_win_streak = []
+        for player_id, detector in detectors.items():
+            if detector.has_dep_bet_withd_sequence():
+                players_with_seq.append(player_id)
+            if detector.has_win_streek():
+                players_with_win_streak.append(player_id)
+
+        self._save_results(players_with_seq, players_with_win_streak)
+
+    def _make_user_detectors(self, grouped_bets, grouped_deposits, grouped_withdrawals):
+        detectors = {}
+        for player_id in grouped_bets.groups.keys():
+            player_bets = grouped_bets.get_group(player_id)
+            player_deposits = self._get_group(grouped_deposits, player_id)
+            player_withdrawals = self._get_group(grouped_withdrawals, player_id)
+
+            detectors[player_id] = UserOperationsDetector(player_deposits, player_withdrawals, player_bets)
+
+        return detectors
+
+    @staticmethod
+    def _get_group(group, key) -> pd.DataFrame:
+        if key in group.groups:
+            return group.get_group(key)
+        return pd.DataFrame()
+
+    @staticmethod
+    def _divided_dep_withd(payments: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+        deposits = payments[payments['transaction_type'] == 'deposit']
+        withdrawals = payments[payments['transaction_type'] != 'deposit']
+        return deposits, withdrawals
+
+    @staticmethod
+    def _confirmed_payments(payments):
+        return payments[~payments['status'].isin(['Failed', 'Pending', 'Declined'])]
+
+    @staticmethod
+    def _save_results(users_with_seq, users_with_win_streak):
+        print(f'Users with deposit-bet-withdrawal sequence: {users_with_seq} \n'
+              f'Users with 5 consecutive winning bets with odds > 1.5: {users_with_win_streak}')
+
+
 if __name__ == '__main__':
-    print('Script 2 started')
+    DataProcessor(CSVDataProvider()).process_data()

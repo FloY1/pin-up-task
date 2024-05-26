@@ -27,5 +27,5 @@ class TestUserOperationsDetector(unittest.TestCase):
             'amount': [Decimal(100), Decimal(100), Decimal(300)],
         })
 
-        detector = UserOperationsDetector(1, deposits, withdrawals, bets)
+        detector = UserOperationsDetector(deposits, withdrawals, bets)
         self.assertTrue(detector.has_dep_bet_withd_sequence())
