@@ -291,7 +291,7 @@ class DataProcessor:
 
     @staticmethod
     def _confirmed_payments(payments):
-        return payments[~payments['status'].isin(['Failed', 'Pending', 'Declined'])]
+        return payments[~payments['status'].isin(['Failed', 'Declined'])]
 
     @staticmethod
     def _save_results(users_with_seq, users_with_win_streak):
