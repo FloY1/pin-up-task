@@ -311,5 +311,4 @@ class DataProcessor:
 
 
 if __name__ == '__main__':
-    paym = pd.read_csv('payments/payments_02.csv')
     DataProcessor(CSVDataProvider()).process_data()
